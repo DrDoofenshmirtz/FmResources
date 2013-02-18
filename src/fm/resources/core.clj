@@ -6,60 +6,57 @@
 
 (def ^{:private true
        :doc "Functions to be used as default values if the respective resource
-            function is not given when a resource is submitted."}
-     default-functions {:on-event (fn [id event resource] resource)
+            function is not contained in a resource's context."}
+     default-functions {:on-event (fn [id event stored] stored)
                         :expired? (constantly false)
                         :close!   (constantly nil)})
 
-(defn with-default-functions [funcs]
-  (merge default-functions funcs))
+(defn with-default-functions [context]
+  (merge default-functions context))
 
 (defn store [{:keys [good expired] :or {expired []} :as resources}
-              key resource & {:as funcs}]
+              key resource & {:as context}]
   (assert resource)
-  (let [funcs    (with-default-functions funcs)
+  (let [context  (with-default-functions context)
         replaced (get good key)
-        good     (assoc good key (assoc funcs :resource resource))
+        good     (assoc good key {:resource resource :context context})
         expired  (if replaced (conj expired [key replaced]) expired)]
     (assoc resources :good good :expired expired)))
 
-(defn- expired? [[key {:keys [resource expired?]}]]
-  (expired? resource))
+(defn- expired? [{{expired? :expired?} :context :as stored}]
+  (or (nil? stored)
+      (and expired?
+           (expired? stored))))
 
-(defn- update-entries [{good :good :as resources} kees update]
-  (if update
-    (reduce
-      (fn [{:keys [good expired] :as resources} key]
-        (if-let [stored (get good key)]
-          (if-let [updated (update [key stored])]
-            (if (expired? updated)
-              (assoc resources :good    (dissoc good key)
-                               :expired (conj expired updated))
-              (assoc resources :good (conj good updated)))
-            resources)
-          resources))
-      resources
-      (or (seq kees) (keys good)))
-    resources))
-
-(defn- update-resource [[key {resource :resource :as stored}] update args]
-  (if update
-    [key (assoc stored :resource (apply update resource args))]
-    stored))
+(defn- apply-update [{good :good :as resources} kees update]
+  (reduce
+    (fn [{:keys [good expired] :as resources} key]
+      (if-let [stored (get good key)]
+        (let [updated (update stored)]
+          (if (expired? updated)
+            (assoc resources :good    (dissoc good key)
+                             :expired (if updated
+                                        (conj expired updated)
+                                        expired))
+            (assoc resources :good (assoc good key updated))))
+        resources))
+    resources
+    (or (seq kees) (keys good))))
 
 (defn update [{:keys [good expired] :or {expired []} :as resources} &
               {:keys [keys update args]}]
   (assert update)
-  (update-entries resources keys #(update-resource % update args)))
+  (apply-update resources keys #(apply update % args)))
 
-(defn- process-event [[key {:keys [resource on-event] :as stored}] id event]
-  [key (assoc stored :resource (on-event id event resource))])
+(defn- on-event [{{on-event :on-event} :context :as stored} id event]
+  (if on-event
+    (on-event id event stored)))
 
 (defn send-event [{:keys [good expired] :or {expired []} :as resources} &
                   {:keys [keys id event]}]
   (assert id)
   (assert event)
-  (update-entries resources keys #(process-event % id event)))
+  (apply-update resources keys #(on-event % id event)))
 
 (defn remove
   ([resources]
@@ -70,8 +67,13 @@
                        :expired (into expired (select-keys good keys)))
       (assoc resources :good (empty good) :expired (into expired good)))))
 
+(defn- close! [{{close! :close!} :context :as stored}]
+  (if close!
+    (close! stored))
+  nil)
+
 (defn clean-up! [{expired :expired :as resources}]
   (io!
-    (doseq [[key {:keys [resource close!]}] expired]
-      (close! resource))
+    (doseq [stored (vals resources)]
+      (close! stored))
     (dissoc resources :expired)))
