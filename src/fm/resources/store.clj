@@ -32,8 +32,8 @@
 (defn- update-and-clean-up [store update]
   (-> (types/update! store update) core/clean-up! :good))
 
-(defn manage! [store key resource & kwargs]
-  (update-and-clean-up store #(apply core/manage % key resource kwargs)))
+(defn store! [store key resource & kwargs]
+  (update-and-clean-up store #(apply core/store % key resource kwargs)))
 
 (defn update! [store & kwargs]
   (update-and-clean-up store #(apply core/update % kwargs)))

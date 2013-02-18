@@ -6,7 +6,7 @@
 
 (def ^{:private true
        :doc "Functions to be used as default values if the respective resource
-            management function is not given when a resource is submitted."}
+            function is not given when a resource is submitted."}
      default-functions {:on-event (fn [id event resource] resource)
                         :expired? (constantly false)
                         :close!   (constantly nil)})
@@ -14,7 +14,7 @@
 (defn with-default-functions [funcs]
   (merge default-functions funcs))
 
-(defn manage [{:keys [good expired] :or {expired []} :as resources}
+(defn store [{:keys [good expired] :or {expired []} :as resources}
               key resource & {:as funcs}]
   (assert resource)
   (let [funcs    (with-default-functions funcs)
@@ -30,8 +30,8 @@
   (if update
     (reduce
       (fn [{:keys [good expired] :as resources} key]
-        (if-let [managed (get good key)]
-          (if-let [updated (update [key managed])]
+        (if-let [stored (get good key)]
+          (if-let [updated (update [key stored])]
             (if (expired? updated)
               (assoc resources :good    (dissoc good key)
                                :expired (conj expired updated))
@@ -42,18 +42,18 @@
       (or (seq kees) (keys good)))
     resources))
 
-(defn- update-resource [[key {resource :resource :as managed}] update args]
+(defn- update-resource [[key {resource :resource :as stored}] update args]
   (if update
-    [key (assoc managed :resource (apply update resource args))]
-    managed))
+    [key (assoc stored :resource (apply update resource args))]
+    stored))
 
 (defn update [{:keys [good expired] :or {expired []} :as resources} &
               {:keys [keys update args]}]
   (assert update)
   (update-entries resources keys #(update-resource % update args)))
 
-(defn- process-event [[key {:keys [resource on-event] :as managed}] id event]
-  [key (assoc managed :resource (on-event id event resource))])
+(defn- process-event [[key {:keys [resource on-event] :as stored}] id event]
+  [key (assoc stored :resource (on-event id event resource))])
 
 (defn send-event [{:keys [good expired] :or {expired []} :as resources} &
                   {:keys [keys id event]}]
