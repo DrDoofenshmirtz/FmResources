@@ -6,55 +6,55 @@
     [fm.resources.core :as core]
     [fm.resources.types :as types]))
 
-(defn ref-store []
-  (let [store (ref nil)]
-    (reify types/ResourceStore
-      (update! [this update]
-        (dosync
-          (let [{good :good :as resources} (update {:good @store})]
-            (ref-set store good)
-            resources)))
-      (contents [this]
-        @store))))
+(defn ref-store
+  ([]
+    (ref-store nil))
+  ([store]
+    (let [store (or store (ref nil))]
+      (reify types/ResourceStore
+        (update! [this update]
+          (dosync
+            (let [[resources removed :as result] (update @store)]
+              (ref-set store resources)
+              result)))
+        (contents [this]
+          @store)))))
 
 (defn partition-store [ref key]
   (reify types/ResourceStore
     (update! [this update]
       (dosync
-        (let [{good :good :as resources} (update {:good (get @ref key)})]
-          (if (empty? good)
+        (let [[resources removed :as result] (update (get @ref key))]
+          (if (empty? resources)
             (alter ref dissoc key)
-            (alter ref assoc key good))
-          resources)))
+            (alter ref assoc key resources))
+          result)))
     (contents [this]
       (get @ref key))))
 
-(defn- update-and-clean-up [store update]
-  (-> (types/update! store update) core/clean-up! :good))
+(defn update-and-clean-up! [store update]
+  (assert store)
+  (assert update)
+  (let [[resources removed] (types/update! store update)]
+    (core/close-all! removed)
+    resources))
 
 (defn store! [store key resource & kwargs]
-  (update-and-clean-up store #(apply core/store % key resource kwargs)))
+  (update-and-clean-up! store #(core/store % key resource kwargs)))
 
-(defn update! [store & kwargs]
-  (update-and-clean-up store #(apply core/update % kwargs)))
+(defn send! [store slot-key & slot-args]
+  (update-and-clean-up! store #(core/send % slot-key slot-args)))
 
-(defn send! [store id event & keys]
-  (update-and-clean-up store
-                       #(core/send-event % :id id :event event :keys keys)))
-
-(defn remove! [store key & keys]
-  (update-and-clean-up store #(core/remove % (cons key keys))))
-
-(defn sweep! [store]
-  (update! store :update identity))
+(defn remove! [store & keys]
+  (update-and-clean-up! store #(core/remove % keys)))
 
 (defn clear! [store]
-  (update-and-clean-up store #(core/remove %)))
+  (remove! store))
 
-(defn resource
+(defn get-resource
   ([store key]
-    (resource store key nil))
+    (get-resource store key nil))
   ([store key default]
-    (if-let [{resource :resource} (get (types/contents store) key)]
+    (if-let [resource (get-in (types/contents store) [:contents key :resource])]
       resource
       default)))
