@@ -1,79 +1,117 @@
 (ns
-  ^{:doc "Core operations for resource (lifecycle) management."
+  ^{:doc
+
+  "Core operations for resource (lifecycle) management.
+
+  Resources are stored in a data structure with the following layout:
+
+   {:contents {key-1 {:resource resource :close! close! :slots slots
+               key-2 {:resource resource :close! close! :slots slots}
+               ...
+               key-n {:resource resource :close! close! :slots slots}
+    :paths    {slot-key-1 [resource-keys]
+               ...
+               slot-key-n [resource-keys]}}."
+
     :author "Frank Mosebach"}
   fm.resources.core
-  (:refer-clojure :exclude [remove]))
+  (:refer-clojure :exclude [remove send]))
 
-(def ^{:private true
-       :doc "Functions to be used as default values if the respective resource
-            function is not contained in a resource's context."}
-     default-functions {:on-event (fn [id event stored] stored)
-                        :expired? (constantly false)
-                        :close!   (constantly nil)})
+(defn- resource-value [resource close! slots]
+  (if slots
+    {:resource resource :close! close! :slots slots}
+    {:resource resource :close! close!}))
 
-(defn with-default-functions [context]
-  (merge default-functions context))
+(defn- remove-paths [paths key slot-keys]
+  (reduce (fn [paths slot-key]
+            (let [keys (disj (paths slot-key) key)]
+              (if (empty? keys)
+                (dissoc paths slot-key)
+                (assoc paths slot-key keys))))
+          paths
+          slot-keys))
 
-(defn store [{:keys [good expired] :or {expired []} :as resources}
-              key resource & {:as context}]
-  (assert resource)
-  (let [context  (with-default-functions context)
-        replaced (get good key)
-        good     (assoc good key {:resource resource :context context})
-        expired  (if replaced (conj expired [key replaced]) expired)]
-    (assoc resources :good good :expired expired)))
+(defn- add-paths [paths key slot-keys]
+  (reduce (fn [paths slot-key]
+            (update-in paths [slot-key] #(conj (or % #{}) key)))
+          paths
+          slot-keys))
 
-(defn- expired? [{{expired? :expired?} :context :as stored}]
-  (or (nil? stored)
-      (and expired?
-           (expired? stored))))
+(defn- squeeze-resources [{:keys [contents paths] :as resources}]
+  (let [resources (cond
+                    (empty? contents) (dissoc resources :contents :paths)
+                    (empty? paths)    (dissoc resources :paths)
+                    :else             resources)]
+    (if-not (empty? resources)
+      resources)))
 
-(defn- apply-update [{good :good :as resources} kees update]
-  (reduce
-    (fn [{:keys [good expired] :as resources} key]
-      (if-let [stored (get good key)]
-        (let [updated (update stored)]
-          (if (expired? updated)
-            (assoc resources :good    (dissoc good key)
-                             :expired (if updated
-                                        (conj expired updated)
-                                        expired))
-            (assoc resources :good (assoc good key updated))))
-        resources))
-    resources
-    (or (seq kees) (keys good))))
+(defn- squeeze [resources removed]
+  (let [resources (squeeze-resources resources)
+        removed   (seq removed)]
+    (cond
+      removed   [resources removed]
+      resources [resources]
+      :else     nil)))
 
-(defn update [{:keys [good expired] :or {expired []} :as resources} &
-              {:keys [keys update args]}]
-  (assert update)
-  (apply-update resources keys #(apply update % args)))
+(defn store [{:keys [contents paths] :as resources} key resource &
+             {:keys [close! slots] :or {close! (constantly nil)}}]
+  (assert (not (nil? resource)))
+  (assert close!)
+  (let [replaced  (get contents key)
+        contents  (assoc contents key (resource-value resource close! slots))
+        paths     (remove-paths paths key (keys (:slots replaced)))
+        paths     (add-paths paths key (keys slots))
+        resources (assoc resources :contents contents :paths paths)]
+    (squeeze resources (if-not (nil? replaced) [replaced]))))
 
-(defn- on-event [{{on-event :on-event} :context :as stored} id event]
-  (if on-event
-    (on-event id event stored)))
+(defn- remove-resource [{:keys [contents paths] :as resources} key]
+  (if-let [{slots :slots :as value} (get contents key)]
+    [(assoc resources :contents (dissoc contents key)
+                      :paths    (remove-paths paths key (keys slots))) value]
+    [resources]))
 
-(defn send-event [{:keys [good expired] :or {expired []} :as resources} &
-                  {:keys [keys id event]}]
-  (assert id)
-  (assert event)
-  (apply-update resources keys #(on-event % id event)))
+(defn- remove-resources [resources removed keys]
+  (if (seq keys)
+    (let [[resources value] (remove-resource resources (first keys))]
+      (recur resources
+             (if value (conj removed value) removed)
+             (rest keys)))
+    (squeeze resources removed)))
 
-(defn remove
-  ([resources]
-    (remove resources nil))
-  ([{:keys [good expired] :or {expired []} :as resources} keys]
-    (if (seq keys)
-      (assoc resources :good    (apply dissoc good keys)
-                       :expired (into expired (select-keys good keys)))
-      (assoc resources :good (empty good) :expired (into expired good)))))
+(defn remove [{contents :contents :as resources} & keys]
+  (if (seq keys)
+    (remove-resources resources [] keys)
+    (squeeze (dissoc resources :contents) (vals contents))))
 
-(defn- close! [{{close! :close!} :context :as stored}]
-  (if close!
-    (close! stored))
-  nil)
+(defn- call-slot [{:keys [resource slots]} slot-key slot-args]
+  (if-let [slot (get slots slot-key)]
+    (apply slot resource slot-args)
+    resource))
 
-(defn clean-up! [{expired :expired :as resources}]
-  (io!
-    (doseq [stored (vals resources)]
-      (close! stored))
-    (dissoc resources :expired)))
+(defn- call-slots [{contents :contents :as resources}
+                   slot-key slot-args keys removed]
+  (if (seq keys)
+    (let [key      (first keys)
+          keys     (rest keys)
+          resource (call-slot (get contents key) slot-key slot-args)]
+      (if (nil? resource)
+        (let [[resources value] (remove-resource resources key)]
+          (recur resources slot-key slot-args keys (conj removed value)))
+        (recur (assoc-in resources [:contents key :resource] resource)
+               slot-key
+               slot-args
+               keys
+               removed)))
+    (squeeze resources removed)))
+
+(defn send [{paths :paths :as resources} slot-key & slot-args]
+  (if-let [keys (get paths slot-key)]
+    (call-slots resources slot-key slot-args keys [])
+    (squeeze resources nil)))
+
+(defn close! [{:keys [resource close!]}]
+  (io! (close! resource)))
+
+(defn close-all! [resource-values]
+  (doseq [value resource-values]
+    (close! value)))
