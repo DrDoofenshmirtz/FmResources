@@ -53,7 +53,7 @@
       resources [resources]
       :else     nil)))
 
-(defn store [{:keys [contents paths] :as resources} key resource &
+(defn store [{:keys [contents paths] :as resources} key resource
              {:keys [close! slots] :or {close! (constantly nil)}}]
   (assert (not (nil? resource)))
   (assert close!)
@@ -78,7 +78,7 @@
              (rest keys)))
     (squeeze resources removed)))
 
-(defn remove [{contents :contents :as resources} & keys]
+(defn remove [{contents :contents :as resources} keys]
   (if (seq keys)
     (remove-resources resources [] keys)
     (squeeze (dissoc resources :contents) (vals contents))))
@@ -104,7 +104,7 @@
                removed)))
     (squeeze resources removed)))
 
-(defn send [{paths :paths :as resources} slot-key & slot-args]
+(defn send [{paths :paths :as resources} slot-key slot-args]
   (if-let [keys (get paths slot-key)]
     (call-slots resources slot-key slot-args keys [])
     (squeeze resources nil)))
