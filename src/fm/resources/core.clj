@@ -5,8 +5,7 @@
 
   Resources are stored in a data structure with the following layout:
 
-   {:contents {key-1 {:resource resource :close! close! :slots slots
-               key-2 {:resource resource :close! close! :slots slots}
+   {:contents {key-1 {:resource resource :close! close! :slots slots}
                ...
                key-n {:resource resource :close! close! :slots slots}
     :paths    {slot-key-1 #{resource-keys}
