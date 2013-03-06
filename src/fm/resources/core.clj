@@ -58,9 +58,9 @@
         rsc))))
 
 (defn- resource-value [resource close! slots]
-  (if slots
-    {:resource resource :close! close! :slots slots}
-    {:resource resource :close! close!}))
+  (if (empty? slots)
+    {:resource resource :close! close!}
+    {:resource resource :close! close! :slots slots}))
 
 (defn- remove-paths [paths key slot-keys]
   (reduce (fn [paths slot-key]
