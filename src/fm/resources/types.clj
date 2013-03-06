@@ -10,3 +10,22 @@
     the given update function.")
   (contents [this]
     "Returns (a snapshot of) the currenly stored contents."))
+
+(defprotocol ResourceState
+  "Defines the result type of resource slot functions."
+  (expired? [this]
+    "Determines if the resource has expired.")
+  (resource [this]
+    "Returns the resulting value of the resource."))
+
+(extend-protocol ResourceState
+  Object
+    (expired? [this]
+      false)
+    (resource [this]
+      this)
+  nil
+  (expired? [this]
+    true)
+  (resource [this]
+    nil))

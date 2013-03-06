@@ -23,8 +23,7 @@
 
           where each slot function is a function (f [resource & args]).
           When invoked, a slot function is supposed to update the passed
-          resource and is expected either return the resource or nil, if
-          the resource has expired and is to be removed from the resources.
+          resource and is expected to return the resulting resource state.
 
   The ':paths' map defines the paths from each existing slot to the related
   slot functions. It does so by mapping each slot key to a set, containing the
@@ -34,7 +33,29 @@
 
     :author "Frank Mosebach"}
   fm.resources.core
-  (:refer-clojure :exclude [remove send]))
+  (:refer-clojure :exclude [remove send])
+  (:require
+    [fm.resources.types :as types]))
+
+(defn good
+  ([]
+    (good nil))
+  ([rsc]
+    (reify types/ResourceState
+      (expired? [this]
+        false)
+      (resource [this]
+        rsc))))
+
+(defn expired
+  ([]
+    (expired nil))
+  ([rsc]
+    (reify types/ResourceState
+      (expired? [this]
+        true)
+      (resource [this]
+        rsc))))
 
 (defn- resource-value [resource close! slots]
   (if slots
@@ -102,31 +123,34 @@
     (remove-resources resources [] keys)
     (squeeze (dissoc resources :contents) (vals contents))))
 
-(defn- call-slot [{:keys [resource slots]} slot-key slot-args]
-  (if-let [slot (get slots slot-key)]
-    (apply slot resource slot-args)
-    resource))
+(defn- call-slot [[{contents :contents :as resources} removed]
+                  key slot-key slot-args]
+  (if-let [{:keys [resource slots] :as value} (get contents key)]
+    (let [resource-state (apply (get slots slot-key) resource slot-args)
+          expired?       (types/expired? resource-state)
+          resource       (types/resource resource-state)]
+      (if expired?
+        (let [[resources] (remove-resource resources key)
+              value       (if (nil? resource)
+                            value
+                            (assoc value :resource resource))]
+          [resources (conj removed value)])
+        [(assoc-in resources [:contents key :resource] resource) removed]))
+    [resources removed]))
 
-(defn- call-slots [{contents :contents :as resources}
-                   slot-key slot-args keys removed]
-  (if (seq keys)
-    (let [key      (first keys)
-          keys     (rest keys)
-          resource (call-slot (get contents key) slot-key slot-args)]
-      (if (nil? resource)
-        (let [[resources value] (remove-resource resources key)]
-          (recur resources slot-key slot-args keys (conj removed value)))
-        (recur (assoc-in resources [:contents key :resource] resource)
-               slot-key
-               slot-args
-               keys
-               removed)))
-    (squeeze resources removed)))
+(defn- call-slots [resources keys slot-key slot-args]
+  (apply squeeze
+         (reduce #(call-slot %1 %2 slot-key slot-args) [resources []] keys)))
 
-(defn send [{paths :paths :as resources} slot-key slot-args]
-  (if-let [keys (get paths slot-key)]
-    (call-slots resources slot-key slot-args keys [])
-    (squeeze resources nil)))
+(defn send
+  ([resources slot-key slot-args]
+    (send resources slot-key slot-args nil))
+  ([{paths :paths :as resources} slot-key slot-args keys]
+    (if-let [keys (if (seq keys)
+                    (seq (filter #(contains? (get paths slot-key) %) keys))
+                    (get paths slot-key))]
+      (call-slots resources keys slot-key slot-args)
+      (squeeze resources nil))))
 
 (defn close! [{:keys [resource close!]}]
   (io! (close! resource)))

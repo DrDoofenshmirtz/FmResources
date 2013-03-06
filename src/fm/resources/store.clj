@@ -45,6 +45,9 @@
 (defn send! [store slot-key & slot-args]
   (update-and-clean-up! store #(core/send % slot-key slot-args)))
 
+(defn send-to! [store keys slot-key & slot-args]
+  (update-and-clean-up! store #(core/send % slot-key slot-args keys)))
+
 (defn remove! [store & keys]
   (update-and-clean-up! store #(core/remove % keys)))
 
