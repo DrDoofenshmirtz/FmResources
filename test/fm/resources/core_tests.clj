@@ -30,7 +30,25 @@
   (let [resource (Object.)
         close! (constantly nil)]
     (tst/is (= {:resource resource :close! close!}
-               (#'core/resource-value resource close! nil)))))
+               (#'core/resource-value resource close! nil)))
+    (tst/is (= {:resource resource :close! close!}
+               (#'core/resource-value resource close! {})))
+    (tst/is (= {:resource resource
+                :close! close!
+                :slots {:slot-1 1 :slot-2 2}}
+               (#'core/resource-value resource close! {:slot-1 1 :slot-2 2})))))
+
+(tst/deftest add-resource-without-slots
+  (let [key      (Object.)
+        resource (Object.)
+        close!   (constantly nil)
+        slots    {}
+        kwargs   {:close! close! :slots  slots}
+        [resources replaced :as result] (core/store nil key resource kwargs)]
+    (tst/is (= [resources nil] [resources replaced]))
+    (tst/is (= [resources] result))
+    (tst/is (= {:contents {key {:resource resource :close! close!}}}
+               resources))))
 
 (defn run-tests []
-  (clojure.test/run-tests 'fm.resources.core-tests))
+  (tst/run-tests 'fm.resources.core-tests))
