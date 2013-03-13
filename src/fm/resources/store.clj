@@ -42,11 +42,11 @@
 (defn store! [store key resource & kwargs]
   (update-and-clean-up! store #(core/store % key resource kwargs)))
 
-(defn send! [store slot-key & slot-args]
-  (update-and-clean-up! store #(core/send % slot-key slot-args)))
+(defn send! [store signal & args]
+  (update-and-clean-up! store #(core/send % signal args)))
 
-(defn send-to! [store keys slot-key & slot-args]
-  (update-and-clean-up! store #(core/send % slot-key slot-args keys)))
+(defn send-to! [store keys signal & args]
+  (update-and-clean-up! store #(core/send % signal args keys)))
 
 (defn remove! [store & keys]
   (update-and-clean-up! store #(core/remove % keys)))
