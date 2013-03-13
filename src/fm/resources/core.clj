@@ -143,13 +143,13 @@
          (reduce #(call-slot %1 %2 slot-key slot-args) [resources []] keys)))
 
 (defn send
-  ([resources slot-key slot-args]
-    (send resources slot-key slot-args nil))
-  ([{paths :paths :as resources} slot-key slot-args keys]
+  ([resources signal args]
+    (send resources signal args nil))
+  ([{paths :paths :as resources} signal args keys]
     (if-let [keys (if (seq keys)
-                    (seq (filter #(contains? (get paths slot-key) %) keys))
-                    (get paths slot-key))]
-      (call-slots resources keys slot-key slot-args)
+                    (seq (filter #(contains? (get paths signal) %) keys))
+                    (get paths signal))]
+      (call-slots resources keys signal args)
       (squeeze resources nil))))
 
 (defn close! [{:keys [resource close!]}]
