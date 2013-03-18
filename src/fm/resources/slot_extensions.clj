@@ -21,4 +21,4 @@
   (assoc slots ::scope-expired (scope-expired-slot scope scopes)))
 
 (defn scope-expired! [store scope]
-  (sto/send! ::scope-expired scope))
+  (sto/send! store ::scope-expired scope))
