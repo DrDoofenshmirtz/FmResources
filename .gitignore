@@ -11,3 +11,4 @@
 build.sh
 TODO.txt
 .lein-deps-sum
+.lein-repl-history
