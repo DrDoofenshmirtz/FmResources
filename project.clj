@@ -3,7 +3,8 @@
 ;; Additional dependencies:
 ;;   fm-core.jar
 
-(def local-mvn-repo-path (-> "/home/DrDoofenshmirtz/maven-repository"
+(def local-mvn-repo-path (-> (str (System/getProperty "user.home")
+                                  "/maven-repository")
                              java.io.File.
                              .toURI
                              str))
