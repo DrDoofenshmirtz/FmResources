@@ -1,6 +1,6 @@
 ;; Leiningen project file for the FmResources clojure project.
 
-(defproject fm/fm-resources "1.0.0-SNAPSHOT"
+(defproject fm/fm-resources "1.1.0-SNAPSHOT"
   :description "FmResources: Resource (Lifecycle) Management."
   :dependencies [[org.clojure/clojure "1.2.1"]
                  [org.clojure/clojure-contrib "1.2.0"]
