@@ -58,6 +58,5 @@
   ([store key]
     (get-resource store key nil))
   ([store key default]
-    (if-let [resource (get-in (types/contents store) [:contents key :resource])]
-      resource
-      default)))
+    (core/get-resource (types/contents store) key default)))
+
