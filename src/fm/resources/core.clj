@@ -37,6 +37,12 @@
   (:require
     [fm.resources.types :as types]))
 
+(defn get-resource
+  ([resources key]
+    (get-resource resources key nil))
+  ([resources key default]
+    (get-in resources [:contents key :resource] default)))
+
 (defn good
   ([]
     (good nil))
